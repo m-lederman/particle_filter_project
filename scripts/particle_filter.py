@@ -33,12 +33,17 @@ def get_yaw_from_pose(p):
     return yaw
 
 
-def draw_random_sample():
+def draw_random_sample(choices, probabilities, n):
     """ Draws a random sample of n elements from a given list of choices and their specified probabilities.
     We recommend that you fill in this function using random_sample.
     """
-    # TODO
-    return
+    out = []
+    boundaries = np.cumsum(probabilities)
+    for _ in range(n):
+        rand = random_sample()
+        i = np.searchsorted(boundaries, rand)
+        out.append(choices[i])
+    return out
 
 
 class Particle:
@@ -123,8 +128,24 @@ class ParticleFilter:
 
     def initialize_particle_cloud(self):
         
-        # TODO
+        # self.map contains the map
+        threshold = 50
+        open_spaces = []
+        for y, row in enumerate(self.map):
+            for x, val in enumerate(row):
+                if val < threshold:
+                    open_spaces.append((y, x))
 
+        probabilities = [1.0/len(open_spaces) for _ in open_spaces]
+
+        positions = draw_random_sample(open_spaces, probabilities, self.num_particles)
+
+        self.particle_cloud = []
+        for y, x in positions:
+            point = Point(x, y, 0)
+            # random yaw
+            orientation = Quaternion()
+            self.particle_cloud.append(Particle(point, orientation))
 
         self.normalize_particles()
 
