@@ -202,7 +202,7 @@ class ParticleFilter:
         if total_weight == 0.0:
             # if all weights are 0.0, make the weights uniform
             # probably won't happen here but useful general edge case
-            uniform_w = 1.0 / len(self.num_particles)
+            uniform_w = 1.0 / self.num_particles
             for particle in self.particle_cloud:
                 particle.w = uniform_w
         else:
