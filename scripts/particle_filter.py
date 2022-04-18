@@ -78,7 +78,7 @@ class Particle:
 
     def set_y(self, y):
         '''
-        Sets the x position of the particle to `x`
+        Sets the y position of the particle to `y`
         '''
         self.pose.position.y = y
 
@@ -179,15 +179,17 @@ class ParticleFilter:
 
         # draw uniformly distributed positions from list using draw_random_sample
         # (this approach would make using different starting distributions easier)
-        probabilities = [1.0/len(open_spaces) for _ in open_spaces]
+        probabilities = [1.0 / len(open_spaces) for _ in open_spaces]
         positions = draw_random_sample(open_spaces, probabilities, self.num_particles)
 
-        # create particles at these positions with random yaw
+        # create particles at these positions with random yaw and uniform weights
         self.particle_cloud = []
         for y, x in positions:
             point = Point(x, y, 0.0)
             orientation = quaternion_from_euler([0.0, 0.0, random_sample() * 360])
-            self.particle_cloud.append(Particle(point, orientation))
+            pose = Pose(point, orientation)
+            particle = Particle(pose, 1.0)
+            self.particle_cloud.append(particle)
 
         self.normalize_particles()
 
@@ -196,8 +198,16 @@ class ParticleFilter:
 
     def normalize_particles(self):
         # make all the particle weights sum to 1.0
-        
-        # TODO
+        total_weight = sum(particle.w for particle in self.particle_cloud)
+        if total_weight == 0.0:
+            # if all weights are 0.0, make the weights uniform
+            # probably won't happen here but useful general edge case
+            uniform_w = 1.0 / len(self.num_particles)
+            for particle in self.particle_cloud:
+                particle.w = uniform_w
+        else:
+            for particle in self.particle_cloud:
+                particle.w /= total_weight
 
 
 
