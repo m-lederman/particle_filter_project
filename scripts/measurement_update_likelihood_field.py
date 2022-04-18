@@ -129,7 +129,7 @@ class LikelihoodFieldMeasurementUpdate(object):
         if not(self.initialized):
             return
 
-        cardinal_directions_idxs = [0, 90, 180, 270]
+        direction_idxs = range(360)
 
         # Compute the importance weights (w) for the 4 particles 
         # in this environment using the likelihood field measurement
