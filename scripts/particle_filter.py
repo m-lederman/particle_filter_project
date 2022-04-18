@@ -56,6 +56,45 @@ class Particle:
         # particle weight
         self.w = w
 
+    # helper functions for getting and setting particle
+    # position and facing angle
+    def get_x(self):
+        '''
+        Returns the x-position of the particle
+        '''
+        return self.pose.position.x
+
+    def get_y(self):
+        '''
+        Returns the y-position of the particle
+        '''
+        return self.pose.position.y
+
+    def set_x(self, x):
+        '''
+        Sets the x position of the particle to `x`
+        '''
+        self.pose.position.x = x
+
+    def set_y(self, y):
+        '''
+        Sets the x position of the particle to `x`
+        '''
+        self.pose.position.y = y
+
+    def get_yaw(self):
+        '''
+        Returns the facing angle of the particle
+        '''
+        return get_yaw_from_pose(self.pose)
+
+    def set_yaw(self, yaw):
+        '''
+        Sets the facing angle of the particle to `yaw`
+        '''
+        euler = euler_from_quaternion(self.pose.orientation)
+        euler[2] = yaw
+        self.pose.orientation = quaternion_from_euler(euler)
 
 
 class ParticleFilter:
@@ -127,24 +166,27 @@ class ParticleFilter:
     
 
     def initialize_particle_cloud(self):
-        
-        # self.map contains the map
+
+        # occupancy values below the threshold are considered open
+        # (values range from 0 to 100)
         threshold = 50
+        # get all of the open positions in the map
         open_spaces = []
         for y, row in enumerate(self.map):
             for x, val in enumerate(row):
                 if val < threshold:
                     open_spaces.append((y, x))
 
+        # draw uniformly distributed positions from list using draw_random_sample
+        # (this approach would make using different starting distributions easier)
         probabilities = [1.0/len(open_spaces) for _ in open_spaces]
-
         positions = draw_random_sample(open_spaces, probabilities, self.num_particles)
 
+        # create particles at these positions with random yaw
         self.particle_cloud = []
         for y, x in positions:
-            point = Point(x, y, 0)
-            # random yaw
-            orientation = Quaternion()
+            point = Point(x, y, 0.0)
+            orientation = quaternion_from_euler([0.0, 0.0, random_sample() * 360])
             self.particle_cloud.append(Particle(point, orientation))
 
         self.normalize_particles()
