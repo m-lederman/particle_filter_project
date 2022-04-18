@@ -18,6 +18,8 @@ import math
 
 from random import randint, random
 
+from time import sleep
+
 
 
 def get_yaw_from_pose(p):
@@ -119,7 +121,7 @@ class ParticleFilter:
         self.map = OccupancyGrid()
 
         # the number of particles used in the particle filter
-        self.num_particles = 10000
+        self.num_particles = 1000
 
         # initialize the particle cloud array
         self.particle_cloud = []
@@ -161,7 +163,6 @@ class ParticleFilter:
 
 
     def get_map(self, data):
-
         self.map = data
     
 
@@ -171,11 +172,21 @@ class ParticleFilter:
         # (values range from 0 to 100)
         threshold = 50
         # get all of the open positions in the map
+        while not self.map.data:
+            pass
         open_spaces = []
-        for y, row in enumerate(self.map):
-            for x, val in enumerate(row):
-                if val < threshold:
-                    open_spaces.append((y, x))
+        map_width = self.map.info.width
+        map_origin_x = self.map.info.origin.position.x
+        map_origin_y = self.map.info.origin.position.y
+        map_yaw = get_yaw_from_pose(self.map.info.origin)
+        map_resolution = self.map.info.resolution
+        for i, val in enumerate(self.map.data):
+            if val < threshold and val != -1:
+                cell_y = i // map_width
+                cell_x = i % map_width
+                position_y = map_origin_y + map_resolution * (cell_y * np.cos(map_yaw) - cell_x * np.sin(map_yaw))
+                position_x = map_origin_x + map_resolution * (cell_x * np.cos(map_yaw) + cell_y * np.sin(map_yaw))
+                open_spaces.append((position_y, position_x))
 
         # draw uniformly distributed positions from list using draw_random_sample
         # (this approach would make using different starting distributions easier)
@@ -185,9 +196,14 @@ class ParticleFilter:
         # create particles at these positions with random yaw and uniform weights
         self.particle_cloud = []
         for y, x in positions:
-            point = Point(x, y, 0.0)
-            orientation = quaternion_from_euler([0.0, 0.0, random_sample() * 360])
-            pose = Pose(point, orientation)
+            point = Point()
+            point.x = x
+            point.y = y
+            point.z = 0
+            orientation = Quaternion(*quaternion_from_euler(0.0, 0.0, random_sample() * 2 * np.pi))
+            pose = Pose()
+            pose.position = point
+            pose.orientation = orientation
             particle = Particle(pose, 1.0)
             self.particle_cloud.append(particle)
 
@@ -215,7 +231,7 @@ class ParticleFilter:
 
         particle_cloud_pose_array = PoseArray()
         particle_cloud_pose_array.header = Header(stamp=rospy.Time.now(), frame_id=self.map_topic)
-        particle_cloud_pose_array.poses
+        particle_cloud_pose_array.poses = []
 
         for part in self.particle_cloud:
             particle_cloud_pose_array.poses.append(part.pose)
@@ -235,7 +251,7 @@ class ParticleFilter:
 
 
     def resample_particles(self):
-
+        pass
         # TODO
 
 
@@ -316,12 +332,14 @@ class ParticleFilter:
         # based on the particles within the particle cloud, update the robot pose estimate
         
         # TODO
+        pass
 
 
     
     def update_particle_weights_with_measurement_model(self, data):
 
         # TODO
+        self.publish_particle_cloud()
 
 
         
@@ -332,7 +350,7 @@ class ParticleFilter:
         # all of the particles correspondingly
 
         # TODO
-
+        pass
 
 
 if __name__=="__main__":
