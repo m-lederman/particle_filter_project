@@ -168,12 +168,14 @@ class ParticleFilter:
 
     def initialize_particle_cloud(self):
 
+        # wait until we have received the map from the map server
+        while not self.map.data:
+            pass
+
         # occupancy values below the threshold are considered open
         # (values range from 0 to 100)
         threshold = 50
         # get all of the open positions in the map
-        while not self.map.data:
-            pass
         open_spaces = []
         map_width = self.map.info.width
         map_origin_x = self.map.info.origin.position.x
@@ -182,6 +184,8 @@ class ParticleFilter:
         map_resolution = self.map.info.resolution
         for i, val in enumerate(self.map.data):
             if val < threshold and val != -1:
+                # this cell is open: calculate the real position of the cell
+                # and add it to the list
                 cell_y = i // map_width
                 cell_x = i % map_width
                 position_y = map_origin_y + map_resolution * (cell_y * np.cos(map_yaw) - cell_x * np.sin(map_yaw))
@@ -251,8 +255,9 @@ class ParticleFilter:
 
 
     def resample_particles(self):
-        pass
-        # TODO
+        probabilities = [particle.w for particle in self.particle_cloud]
+        new_particles = draw_random_sample(self.particles, probabilities, self.num_particles)
+        self.particle_cloud = new_particles
 
 
 
@@ -371,12 +376,31 @@ class ParticleFilter:
         
 
     def update_particles_with_motion_model(self):
-
         # based on the how the robot has moved (calculated from its odometry), we'll  move
         # all of the particles correspondingly
 
-        # TODO
-        pass
+        curr_x = self.odom_pose.pose.position.x
+        old_x = self.odom_pose_last_motion_update.pose.position.x
+        curr_y = self.odom_pose.pose.position.y
+        old_y = self.odom_pose_last_motion_update.pose.position.y
+        curr_yaw = get_yaw_from_pose(self.odom_pose.pose)
+        old_yaw = get_yaw_from_pose(self.odom_pose_last_motion_update.pose)
+
+        dx = curr_x - old_x
+        dy = curr_y - old_y
+        avg_yaw = (curr_yaw + old_yaw) / 2
+        # linear movement in direction of robot orientation (positive forward, negative backward)
+        linear_movement = dx * np.cos(avg_yaw) + dy * np.sin(avg_yaw)
+        dyaw = curr_yaw - old_yaw
+
+        for particle in self.particles:
+            # rotate particle
+            particle.set_yaw(particle.get_yaw() + dyaw * (random_sample() * .2 + .9))
+
+            # move particle
+            particle_linear_movement = forward_linear_movement * (random_sample() * .2 + .9)
+            particle.set_x(particle.get_x() + particle_linear_movement * np.cos(particle.get_yaw()))
+            particle.set_y(particle.get_y() + particle_linear_movement * np.sin(particle.get_yaw()))
 
 
 if __name__=="__main__":
