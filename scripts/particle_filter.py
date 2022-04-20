@@ -8,7 +8,7 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Header, String
 
 import tf
-from tf import TransformListener
+from tf import TransfmListener
 from tf import TransformBroadcaster
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
 
@@ -331,11 +331,33 @@ class ParticleFilter:
     def update_estimated_robot_pose(self):
         # based on the particles within the particle cloud, update the robot pose estimate
         
-         pose = self.particle_cloud[0]
+        #calculate the average x and y position and orientation of the robot and push those to a new particle
+        averagepose = Particle()
         for particle in self.particle_cloud:
-            if particle.w > pose.w:
-                pose = particle
-        self.publish_estimated_robot_pose(pose)
+            averagepose.pose.position.x += particle.pose.position.x * particle.w
+            averagepose.pose.position.y += particle.pose.position.y * particle.w
+            averagepose.pose.orientation.z += particle.pose.orientation.y * particle.w
+        
+        #verify that there are particles near the average point
+        particlesnearby = 0
+        for particle in self.particle_cloud:
+            for x in range(0,6):
+                for y in range(0,6):
+                    if particle.pose.position.x == averagepose.pose.position.x + x and particle.pose.position.y == averagepose.pose.position.y + y:
+                        particlesnearby += 1
+                
+        #find the particle with the largest weight
+        pose = self.particle_cloud[0]
+            for particle in self.particle_cloud:
+                if particle.w > pose.w:
+                    pose = particle
+   
+        #if there aren't enough particles near the average point, assume there is an error and settle for the point with the largest weight
+        if particlesnearby >= 10:
+            self.publish_estimated_robot_pose(averagepose)
+        else:
+            self.publish_estimated_robot_pose(pose)
+        
 
 
 
