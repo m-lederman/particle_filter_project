@@ -331,8 +331,12 @@ class ParticleFilter:
     def update_estimated_robot_pose(self):
         # based on the particles within the particle cloud, update the robot pose estimate
         
-        # TODO
-        pass
+         pose = self.particle_cloud[0]
+        for particle in self.particle_cloud:
+            if particle.w > pose.w:
+                pose = particle
+        self.publish_estimated_robot_pose(pose)
+
 
 
     
