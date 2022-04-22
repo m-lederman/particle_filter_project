@@ -94,9 +94,12 @@ class Particle:
         '''
         Sets the facing angle of the particle to `yaw`
         '''
-        euler = euler_from_quaternion(self.pose.orientation)
+        euler = euler_from_quaternion([self.pose.orientation.x,
+                                       self.pose.orientation.y,
+                                       self.pose.orientation.z,
+                                       self.pose.orientation.w])
         euler[2] = yaw
-        self.pose.orientation = quaternion_from_euler(euler)
+        self.pose.orientation = Quaternion(*quaternion_from_euler(euler))
 
 
 class ParticleFilter:
