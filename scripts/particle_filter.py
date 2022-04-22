@@ -18,8 +18,8 @@ import math
 
 from random import randint, random
 
-from time import sleep
-
+from measurement_update_likelihood_field import compute_prob_zero_centered_gaussian
+from likehood_field import LikelihoodField
 
 
 def get_yaw_from_pose(p):
@@ -154,6 +154,8 @@ class ParticleFilter:
         self.tf_listener = TransformListener()
         self.tf_broadcaster = TransformBroadcaster()
 
+        # initialize the likelihood field
+        self.likelihood_field = LikelihoodField()
 
         # intialize the particle cloud
         self.initialize_particle_cloud()
@@ -324,6 +326,8 @@ class ParticleFilter:
 
                 self.resample_particles()
 
+                self.normalize_particles()
+
                 self.update_estimated_robot_pose()
 
                 self.publish_particle_cloud()
@@ -337,11 +341,11 @@ class ParticleFilter:
         # based on the particles within the particle cloud, update the robot pose estimate
         
         #calculate the average x and y position and orientation of the robot and push those to a new particle
-        averagepose = Particle()
+        averagepose = Pose()
         for particle in self.particle_cloud:
-            averagepose.pose.position.x += particle.pose.position.x * particle.w
-            averagepose.pose.position.y += particle.pose.position.y * particle.w
-            averagepose.pose.orientation.z += particle.pose.orientation.y * particle.w
+            averagepose.position.x += particle.pose.position.x * particle.w
+            averagepose.position.y += particle.pose.position.y * particle.w
+            averagepose.orientation.z += particle.pose.orientation.z * particle.w
         
         #verify that there are particles near the average point
         particlesnearby = 0
@@ -352,24 +356,47 @@ class ParticleFilter:
                         particlesnearby += 1
                 
         #find the particle with the largest weight
-        pose = self.particle_cloud[0]
+        greatest_weight = self.particle_cloud[0]
             for particle in self.particle_cloud:
-                if particle.w > pose.w:
-                    pose = particle
+                if particle.w > greatest_weight.w:
+                    greatest_weight = particle
    
         #if there aren't enough particles near the average point, assume there is an error and settle for the point with the largest weight
         if particlesnearby >= 10:
-            self.publish_estimated_robot_pose(averagepose)
+            self.robot_estimate = averagepose
         else:
-            self.publish_estimated_robot_pose(pose)
+            self.robot_estimate = greatest_weight.pose
         
 
 
 
     
     def update_particle_weights_with_measurement_model(self, data):
+        # Given the laser scan data, compute the importance weights (w) 
+        # for each particle using the likelihood field measurement algorithm.
 
-        # TODO
+        for particle in self.particle_cloud:
+            # get particle position and angle
+            particle_x = particle.pose.position.x
+            particle_y = particle.pose.position.y
+            particle_theta = euler_from_quaternion(particle.pose.orientation.x,
+                                                   particle.pose.orientation.y,
+                                                   particle.pose.orientation.z,
+                                                   particle.pose.orientation.w)[2]
+            # get product of gaussian likelihoods for each distance reading
+            q = 1.0
+            for scan_direction in range(360):
+                scan_end_x = particle.get_x() + data.ranges[scan_direction] * np.cos(particle.get_yaw() + scan_direction)
+                scan_end_y = particle.get_y() + data.ranges[scan_direction] * np.sin(particle.get_yaw() + scan_direction)
+                dist = self.likelihood_field.get_closest_obstacle_distance(scan_end_x, scan_end_y)
+                # get_closest_obsticle_distance returns NaN if coordinates are outside
+                # of full map boundaries (including -1's outside maze)
+                if not math.isnan(dist):
+                    # use standard deviation 0.1
+                    q *= compute_prob_zero_centered_gaussian(dist, 0.1)
+            # set weight to likelihood
+            particle.w = q
+        
         self.publish_particle_cloud()
 
 
