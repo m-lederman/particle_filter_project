@@ -376,14 +376,8 @@ class ParticleFilter:
         # for each particle using the likelihood field measurement algorithm.
 
         for particle in self.particle_cloud:
-            # get particle position and angle
-            particle_x = particle.pose.position.x
-            particle_y = particle.pose.position.y
-            particle_theta = euler_from_quaternion(particle.pose.orientation.x,
-                                                   particle.pose.orientation.y,
-                                                   particle.pose.orientation.z,
-                                                   particle.pose.orientation.w)[2]
-            # get product of gaussian likelihoods for each distance reading
+            # for each particle, set weights to product of gaussian likelihoods for
+            # each distance reading from the laser scan
             q = 1.0
             for scan_direction in range(360):
                 scan_end_x = particle.get_x() + data.ranges[scan_direction] * np.cos(particle.get_yaw() + scan_direction)
