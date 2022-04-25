@@ -8,18 +8,21 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Header, String
 
 import tf
-from tf import TransfmListener
+from tf import TransformListener
 from tf import TransformBroadcaster
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
 
 import numpy as np
-from numpy.random import random_sample
+from numpy.random import random_sample, normal
 import math
 
 from random import randint, random
 
 from measurement_update_likelihood_field import compute_prob_zero_centered_gaussian
-from likehood_field import LikelihoodField
+from likelihood_field import LikelihoodField
+
+from sklearn.neighbors import NearestNeighbors
+from copy import deepcopy
 
 
 def get_yaw_from_pose(p):
@@ -44,6 +47,7 @@ def draw_random_sample(choices, probabilities, n):
     for _ in range(n):
         rand = random_sample()
         i = np.searchsorted(boundaries, rand)
+        #print(f'i: {i}')
         out.append(choices[i])
     return out
 
@@ -94,12 +98,12 @@ class Particle:
         '''
         Sets the facing angle of the particle to `yaw`
         '''
-        euler = euler_from_quaternion([self.pose.orientation.x,
-                                       self.pose.orientation.y,
-                                       self.pose.orientation.z,
-                                       self.pose.orientation.w])
+        euler = list(euler_from_quaternion([self.pose.orientation.x,
+                                            self.pose.orientation.y,
+                                            self.pose.orientation.z,
+                                            self.pose.orientation.w]))
         euler[2] = yaw
-        self.pose.orientation = Quaternion(*quaternion_from_euler(euler))
+        self.pose.orientation = Quaternion(*quaternion_from_euler(*euler))
 
 
 class ParticleFilter:
@@ -124,7 +128,7 @@ class ParticleFilter:
         self.map = OccupancyGrid()
 
         # the number of particles used in the particle filter
-        self.num_particles = 1000
+        self.num_particles = 500
 
         # initialize the particle cloud array
         self.particle_cloud = []
@@ -133,7 +137,7 @@ class ParticleFilter:
         self.robot_estimate = Pose()
 
         # set threshold values for linear and angular movement before we preform an update
-        self.lin_mvmt_threshold = 0.2        
+        self.lin_mvmt_threshold = 0.1        
         self.ang_mvmt_threshold = (np.pi / 6)
 
         self.odom_pose_last_motion_update = None
@@ -232,7 +236,7 @@ class ParticleFilter:
                 particle.w = uniform_w
         else:
             for particle in self.particle_cloud:
-                particle.w /= total_weight
+                particle.w = particle.w / total_weight
 
 
 
@@ -261,7 +265,11 @@ class ParticleFilter:
 
     def resample_particles(self):
         probabilities = [particle.w for particle in self.particle_cloud]
-        new_particles = draw_random_sample(self.particles, probabilities, self.num_particles)
+        #print(probabilities, sum(probabilities))
+        new_particles_indexes = draw_random_sample(list(range(self.num_particles)), probabilities, self.num_particles)
+        new_particles = []
+        for i in new_particles_indexes:
+            new_particles.append(deepcopy(self.particle_cloud[i]))
         self.particle_cloud = new_particles
 
 
@@ -318,25 +326,33 @@ class ParticleFilter:
             if (np.abs(curr_x - old_x) > self.lin_mvmt_threshold or 
                 np.abs(curr_y - old_y) > self.lin_mvmt_threshold or
                 np.abs(curr_yaw - old_yaw) > self.ang_mvmt_threshold):
+                print("Updating")
 
                 # This is where the main logic of the particle filter is carried out
 
                 self.update_particles_with_motion_model()
-
+                print('done1')
                 self.update_particle_weights_with_measurement_model(data)
+                print('done2')
 
                 self.normalize_particles()
+                print('done3')
 
                 self.resample_particles()
+                print('done4')
 
                 self.normalize_particles()
+                print('done5')
 
                 self.update_estimated_robot_pose()
+                print('done6')
 
                 self.publish_particle_cloud()
                 self.publish_estimated_robot_pose()
+                print('done7')
 
                 self.odom_pose_last_motion_update = self.odom_pose
+                print('done')
 
 
 
@@ -355,20 +371,20 @@ class ParticleFilter:
         for particle in self.particle_cloud:
             for x in range(0,6):
                 for y in range(0,6):
-                    if particle.pose.position.x == averagepose.pose.position.x + x and particle.pose.position.y == averagepose.pose.position.y + y:
+                    if particle.pose.position.x == averagepose.position.x + x and particle.pose.position.y == averagepose.position.y + y:
                         particlesnearby += 1
                 
         #find the particle with the largest weight
         greatest_weight = self.particle_cloud[0]
-            for particle in self.particle_cloud:
-                if particle.w > greatest_weight.w:
-                    greatest_weight = particle
+        for particle in self.particle_cloud:
+            if particle.w > greatest_weight.w:
+                greatest_weight = particle
    
         #if there aren't enough particles near the average point, assume there is an error and settle for the point with the largest weight
-        if particlesnearby >= 10:
-            self.robot_estimate = averagepose
-        else:
-            self.robot_estimate = greatest_weight.pose
+        #if particlesnearby >= 10:
+        #self.robot_estimate = averagepose
+        # else:
+        self.robot_estimate = greatest_weight.pose
         
 
 
@@ -378,23 +394,25 @@ class ParticleFilter:
         # Given the laser scan data, compute the importance weights (w) 
         # for each particle using the likelihood field measurement algorithm.
 
+        z_hit = 0.95
+        z_random = 0.05
+
         for particle in self.particle_cloud:
             # for each particle, set weights to product of gaussian likelihoods for
             # each distance reading from the laser scan
             q = 1.0
-            for scan_direction in range(360):
-                scan_end_x = particle.get_x() + data.ranges[scan_direction] * np.cos(particle.get_yaw() + scan_direction)
-                scan_end_y = particle.get_y() + data.ranges[scan_direction] * np.sin(particle.get_yaw() + scan_direction)
-                dist = self.likelihood_field.get_closest_obstacle_distance(scan_end_x, scan_end_y)
-                # get_closest_obsticle_distance returns NaN if coordinates are outside
-                # of full map boundaries (including -1's outside maze)
-                if not math.isnan(dist):
-                    # use standard deviation 0.1
-                    q *= compute_prob_zero_centered_gaussian(dist, 0.1)
+            for scan_direction in range(0, 360, 15):
+                if data.ranges[scan_direction] != 0.0:
+                    scan_end_x = particle.get_x() + data.ranges[scan_direction] * np.cos(particle.get_yaw() + scan_direction)
+                    scan_end_y = particle.get_y() + data.ranges[scan_direction] * np.sin(particle.get_yaw() + scan_direction)
+                    dist = self.likelihood_field.get_closest_obstacle_distance(scan_end_x, scan_end_y)
+                    # get_closest_obsticle_distance returns NaN if coordinates are outside
+                    # of full map boundaries (including -1's outside maze)
+                    if not math.isnan(dist):
+                        # use standard deviation 0.1
+                        q *= z_hit * compute_prob_zero_centered_gaussian(dist, 0.75) + z_random / 4.0
             # set weight to likelihood
             particle.w = q
-        
-        self.publish_particle_cloud()
 
 
         
@@ -413,16 +431,19 @@ class ParticleFilter:
         dx = curr_x - old_x
         dy = curr_y - old_y
         avg_yaw = (curr_yaw + old_yaw) / 2
+
+        print(f'yaw: {curr_yaw}')
+        print(f'dx: {dx}')
+        print(f'dy: {dy}')
         # linear movement in direction of robot orientation (positive forward, negative backward)
         linear_movement = dx * np.cos(avg_yaw) + dy * np.sin(avg_yaw)
         dyaw = curr_yaw - old_yaw
-
-        for particle in self.particles:
+        for particle in self.particle_cloud:
             # rotate particle
-            particle.set_yaw(particle.get_yaw() + dyaw * (random_sample() * .2 + .9))
+            particle.set_yaw(particle.get_yaw() + dyaw * normal(1.0, 0.1))
 
             # move particle
-            particle_linear_movement = forward_linear_movement * (random_sample() * .2 + .9)
+            particle_linear_movement = linear_movement * normal(1.0, 0.1)
             particle.set_x(particle.get_x() + particle_linear_movement * np.cos(particle.get_yaw()))
             particle.set_y(particle.get_y() + particle_linear_movement * np.sin(particle.get_yaw()))
 
