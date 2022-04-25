@@ -47,7 +47,6 @@ def draw_random_sample(choices, probabilities, n):
     for _ in range(n):
         rand = random_sample()
         i = np.searchsorted(boundaries, rand)
-        #print(f'i: {i}')
         out.append(choices[i])
     return out
 
@@ -265,7 +264,6 @@ class ParticleFilter:
 
     def resample_particles(self):
         probabilities = [particle.w for particle in self.particle_cloud]
-        #print(probabilities, sum(probabilities))
         new_particles_indexes = draw_random_sample(list(range(self.num_particles)), probabilities, self.num_particles)
         new_particles = []
         for i in new_particles_indexes:
@@ -326,33 +324,25 @@ class ParticleFilter:
             if (np.abs(curr_x - old_x) > self.lin_mvmt_threshold or 
                 np.abs(curr_y - old_y) > self.lin_mvmt_threshold or
                 np.abs(curr_yaw - old_yaw) > self.ang_mvmt_threshold):
-                print("Updating")
 
                 # This is where the main logic of the particle filter is carried out
 
                 self.update_particles_with_motion_model()
-                print('done1')
+
                 self.update_particle_weights_with_measurement_model(data)
-                print('done2')
 
                 self.normalize_particles()
-                print('done3')
 
                 self.resample_particles()
-                print('done4')
 
                 self.normalize_particles()
-                print('done5')
 
                 self.update_estimated_robot_pose()
-                print('done6')
 
                 self.publish_particle_cloud()
                 self.publish_estimated_robot_pose()
-                print('done7')
 
                 self.odom_pose_last_motion_update = self.odom_pose
-                print('done')
 
 
 
@@ -361,30 +351,15 @@ class ParticleFilter:
         
         #calculate the average x and y position and orientation of the robot and push those to a new particle
         averagepose = Pose()
+        average_yaw = 0.0
         for particle in self.particle_cloud:
             averagepose.position.x += particle.pose.position.x * particle.w
             averagepose.position.y += particle.pose.position.y * particle.w
-            averagepose.orientation.z += particle.pose.orientation.z * particle.w
+            average_yaw += particle.get_yaw() * particle.w
+
+        averagepose.orientation = Quaternion(*quaternion_from_euler(0.0, 0.0, average_yaw))
         
-        #verify that there are particles near the average point
-        particlesnearby = 0
-        for particle in self.particle_cloud:
-            for x in range(0,6):
-                for y in range(0,6):
-                    if particle.pose.position.x == averagepose.position.x + x and particle.pose.position.y == averagepose.position.y + y:
-                        particlesnearby += 1
-                
-        #find the particle with the largest weight
-        greatest_weight = self.particle_cloud[0]
-        for particle in self.particle_cloud:
-            if particle.w > greatest_weight.w:
-                greatest_weight = particle
-   
-        #if there aren't enough particles near the average point, assume there is an error and settle for the point with the largest weight
-        #if particlesnearby >= 10:
-        #self.robot_estimate = averagepose
-        # else:
-        self.robot_estimate = greatest_weight.pose
+        self.robot_estimate = averagepose
         
 
 
@@ -403,8 +378,9 @@ class ParticleFilter:
             q = 1.0
             for scan_direction in range(0, 360, 15):
                 if data.ranges[scan_direction] != 0.0:
-                    scan_end_x = particle.get_x() + data.ranges[scan_direction] * np.cos(particle.get_yaw() + scan_direction)
-                    scan_end_y = particle.get_y() + data.ranges[scan_direction] * np.sin(particle.get_yaw() + scan_direction)
+                    scan_end_x = particle.get_x() + data.ranges[scan_direction] * np.cos(particle.get_yaw() + (scan_direction * np.pi / 180.0))
+                    scan_end_y = particle.get_y() + data.ranges[scan_direction] * np.sin(particle.get_yaw() + (scan_direction * np.pi / 180.0))
+
                     dist = self.likelihood_field.get_closest_obstacle_distance(scan_end_x, scan_end_y)
                     # get_closest_obsticle_distance returns NaN if coordinates are outside
                     # of full map boundaries (including -1's outside maze)
@@ -432,9 +408,6 @@ class ParticleFilter:
         dy = curr_y - old_y
         avg_yaw = (curr_yaw + old_yaw) / 2
 
-        print(f'yaw: {curr_yaw}')
-        print(f'dx: {dx}')
-        print(f'dy: {dy}')
         # linear movement in direction of robot orientation (positive forward, negative backward)
         linear_movement = dx * np.cos(avg_yaw) + dy * np.sin(avg_yaw)
         dyaw = curr_yaw - old_yaw
