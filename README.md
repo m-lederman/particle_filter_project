@@ -65,3 +65,72 @@ Updating particle weights: Mon 4/18
 Normalizing and resampling: Wed 4/20
 
 Updating estimated pose: Fri 4/22
+
+## Writeup
+
+### Objectives
+
+The main objective of this project was to implement a particle filter 
+localization algorithm for determining the location of the robot given a map
+of its environment and readings from its LiDAR and odometry. The robot is
+steered around the environment via teleoperation, and as its sensors gather
+more information, the particles converge on the robot's real location.
+
+### High-level Description
+
+ABC
+
+### Components
+
+#### Initializing the particle cloud
+
+Location: `ParticleFilter.initialize_particle_cloud` in particle_filter.py
+
+Code description: Our implementation creates the initial particle cloud by
+placing particles uniformly randomly around the vacant cells in the map with
+uniformly random orientations.
+
+#### The movement model
+
+Location: `ParticleFilter.update_particles_with_motion_model` in particle_filter.py
+
+Code description: Our implementation first rotates the particles, then moves
+them forward or backward. The amount to move the particles is determined by
+taking the distance the robot moved in the direction of the average between
+its previous yaw and current yaw.
+
+#### The measurement model
+
+Location: `ParticleFilter.update_particle_weights_with_measurement_model` in particle_filter.py
+
+Code description: We used the likelihood field method for this function.
+
+#### Resampling the particles
+
+Location: `ParticleFilter.resample_particles` in particle_filter.py
+
+Code description: This function uses the `draw_random_sample` method. We draw
+particles from the current particle cloud with probabilities equal to their
+weights. In doing this, we make sure to use copies of each chosen particle 
+instead of object references to avoid multiple particles in the cloud
+pointing to the same object.
+
+#### Incorporating noise
+
+Location: `ParticleFilter.update_particles_with_motion_model` in particle_filter.py
+
+Code description:
+
+#### Updating the estimated robot pose
+
+Location: `ParticleFilter.update_estimated_robot_pose` in particle_filter.py
+
+Code description:
+
+#### Optimizing the parameters
+
+### Challenges
+
+### Future work
+
+### Takeaways
